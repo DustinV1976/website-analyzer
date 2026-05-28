@@ -9,6 +9,7 @@ __pycache__/
 *.pyo
 
 # Generated data
+data/
 data/reports/
 data/analyses.db
 data/chroma/
@@ -23,3 +24,8 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+CLAUDE.md
+.claude/
+
+
