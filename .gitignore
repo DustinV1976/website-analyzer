@@ -1,0 +1,25 @@
+# Environment
+.env
+*.env
+
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Generated data
+data/reports/
+data/analyses.db
+data/chroma/
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
