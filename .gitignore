@@ -8,11 +8,11 @@ __pycache__/
 *.py[cod]
 *.pyo
 
-# Generated data
-data/
+# Generated data (runtime-only — not committed)
 data/reports/
 data/analyses.db
-data/chroma/
+
+# data/chroma/ is committed — it holds the pre-seeded Fort Lauderdale corpus
 
 # Streamlit secrets
 .streamlit/secrets.toml
