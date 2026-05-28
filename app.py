@@ -253,16 +253,18 @@ def render_hidden_connections(report: dict) -> None:
     # ── Similar sites ──
     try:
         similar = find_similar_sites(url, n=5)
-    except Exception:
+    except Exception as e:
         similar = []
+        st.warning(f"Similar sites lookup failed: {e}")
 
     # Check corpus size to show gentle message if thin
+    corpus_count = 0
     try:
-        from scripts.vector_store import _get_chroma, init_chroma
+        from scripts.vector_store import _get_chroma
         init_chroma()
         corpus_count = _get_chroma().get_or_create_collection("pages").count()
-    except Exception:
-        corpus_count = 0
+    except Exception as e:
+        st.warning(f"Corpus check failed: {e}")
 
     if corpus_count < 10:
         st.info(
