@@ -337,63 +337,60 @@ website-analyzer/
 
 ---
 
-## Phase 4 — Streamlit UI (`app.py`)
+## Phase 4 — Streamlit UI (`app.py`) ✅ COMPLETE
 
-### 4a. Foundation and Auth
+### 4a. Foundation and Auth ✅
 
-- [ ] Set up password gate using `st.secrets["APP_PASSWORD"]`
-- [ ] Create two-column layout: narrow sidebar (history) + wide main panel (report)
-- [ ] Add app name and one-line description at top
+- [x] Password gate using `st.secrets["APP_PASSWORD"]`
+- [x] Two-column layout: sidebar (history) + wide main panel (report)
+- [x] App name and one-line description at top
 
-### 4b. URL Input
+### 4b. URL Input ✅
 
-- [ ] `st.text_input` for URL
-- [ ] Analysis depth radio: `Surface (fast)` / `Deep (thorough)`
-- [ ] "Analyze" button
-- [ ] Validate URL format before running (show error if invalid)
+- [x] `st.text_input` for URL
+- [x] Analysis depth radio: Surface / Deep
+- [x] Analyze button
+- [x] URL validation with error message
 
-### 4c. Loading State
+### 4c. Loading State ✅
 
-- [ ] Show spinner while analysis runs
-- [ ] Display live status messages as each step completes:
-  - "Fetching page..."
+- [x] `st.status()` context manager — live step-by-step updates:
+  - "Fetching and parsing page..."
   - "Running SEO audit..."
   - "Decoding business signals..."
-  - "Searching for hidden connections..."
+  - "Synthesizing final report..."
+  - "Saving to database..." / "Indexing for hidden connections..."
+  - Collapses to "Analysis complete!" when done
 
-### 4d. Report Display
+### 4d. Report Display ✅
 
-- [ ] **Site Intelligence Score** — large number display, color-coded:
-  - 0–40: red, 41–69: amber, 70–100: green
-- [ ] Score breakdown: four horizontal bars (SEO, Technical, Business, Trust)
-- [ ] **Quick Wins** section — top 3 issues, styled as prominent action cards
-- [ ] **Strategic Recommendations** — top 3, less prominent
-- [ ] Expandable detail sections (collapsed by default):
-  - Page Inspector findings
-  - SEO Audit (E-E-A-T scores, Core Web Vitals, technical checklist)
+- [x] Large score display, color-coded (red / amber / green)
+- [x] Score breakdown: four progress bars (SEO, Technical, Business, Trust)
+- [x] Quick Wins — top 3, bordered action cards with effort badge
+- [x] Strategic Recommendations — top 3, same card style
+- [x] Expandable sections (collapsed by default):
+  - Page Inspector findings (meta, content, tech, trust)
+  - SEO Audit (E-E-A-T bars, Core Web Vitals, technical checklist)
   - Business Decoder (model, audience, funnel, positioning)
-- [ ] Technical checklist displayed as ✅ / ❌ / ⚠️ icons
+- [x] Technical checklist with ✅ / ❌ / ⚠️ icons
 
-### 4e. Hidden Connections Panel ⭐
+### 4e. Hidden Connections Panel ✅
 
-- [ ] Section header: *"Hidden Connections — What Similar Sites Are Doing Better"*
-- [ ] Show top 3 similar sites:
-  - Site name, category, their score, score delta vs. current site
-- [ ] Content Gaps: "Topics top-performing competitors cover that you don't"
-  - Display as bullet list of missing topic areas
-- [ ] Solved Problems: "Sites that fixed your biggest issue and how"
-  - 2–3 examples with brief description of what changed
-- [ ] If fewer than 10 similar sites in DB: show gentle message instead of empty state
+- [x] Header: "Hidden Connections — What Similar Sites Are Doing Better"
+- [x] Top 3 similar sites with domain, category, score, delta
+- [x] Content Gaps as bullet list
+- [x] Solved Problems cards (domain, score, issue, fix)
+- [x] Gentle message shown when corpus < 10 sites
 
-### 4f. Sidebar — History
+### 4f. Sidebar History ✅
 
-- [ ] List of previously analyzed URLs with their scores
-- [ ] Click any to reload that report without re-running analysis
+- [x] Previously analyzed URLs with score + color emoji
+- [x] Click to reload without re-running analysis
 
-### 4g. Export
+### 4g. Export ✅
 
-- [ ] "Download JSON" button — full `FINAL_REPORT` as `.json`
-- [ ] "Download Summary" button — key findings as `.md` file
+- [x] Download JSON button (full FINAL_REPORT)
+- [x] Download Markdown button (formatted summary)
 
 ---
 
