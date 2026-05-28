@@ -30,6 +30,28 @@ from urllib.parse import urlparse
 
 
 # ─────────────────────────────────────────────────────────────
+# ONE-TIME BOOTSTRAP
+# ─────────────────────────────────────────────────────────────
+
+@st.cache_resource
+def _bootstrap():
+    """
+    Run database and vector-store setup exactly once per Streamlit session.
+
+    @st.cache_resource tells Streamlit: "the return value of this function
+    should be created once and reused for the lifetime of the session." So
+    even though we call _bootstrap() on every analysis, the body only runs
+    on the very first call.
+
+    We return True only so cache_resource has something to cache — the
+    real work is the side-effect of init_db()/init_chroma() running.
+    """
+    init_db()
+    init_chroma()
+    return True
+
+
+# ─────────────────────────────────────────────────────────────
 # PAGE CONFIG
 # ─────────────────────────────────────────────────────────────
 
@@ -142,6 +164,8 @@ def build_markdown_summary(report: dict) -> str:
 
 def run_analysis(url: str, depth: str) -> dict:
     """Run the full pipeline with live status updates in the UI."""
+    _bootstrap()
+
     with st.status("Analyzing website...", expanded=True) as status:
         st.write("📄 Fetching and parsing page...")
         page_report = run_page_inspector(url, depth)
@@ -157,14 +181,12 @@ def run_analysis(url: str, depth: str) -> dict:
 
         st.write("💾 Saving to database...")
         try:
-            init_db()
             save_analysis(final_report)
         except Exception as e:
             st.write(f"⚠️ DB save skipped: {e}")
 
         st.write("🔗 Indexing for hidden connections...")
         try:
-            init_chroma()
             store_page(final_report)
             store_sections(final_report)
             store_issues(final_report)

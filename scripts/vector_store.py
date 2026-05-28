@@ -36,12 +36,17 @@ def _get_openai():
     return _openai_client
 
 
+def _collection(name: str):
+    # embedding_function=None tells Chroma we supply our own embeddings via
+    # OpenAI, so it never tries to load its default ONNX model.
+    return _get_chroma().get_or_create_collection(name, embedding_function=None)
+
+
 def init_chroma() -> None:
     """Ensure the three collections exist."""
-    c = _get_chroma()
-    c.get_or_create_collection("pages")
-    c.get_or_create_collection("sections")
-    c.get_or_create_collection("issues")
+    _collection("pages")
+    _collection("sections")
+    _collection("issues")
 
 
 def embed(text: str) -> list[float]:
@@ -96,7 +101,7 @@ def store_page(
     score = final_report.get("site_intelligence_score", {})
     summary = final_report.get("summary", {})
 
-    collection = _get_chroma().get_or_create_collection("pages")
+    collection = _collection("pages")
     collection.upsert(
         ids=[url],
         embeddings=[embed(text)],
@@ -131,7 +136,7 @@ def store_sections(final_report: dict) -> None:
     if not h2s:
         return
 
-    collection = _get_chroma().get_or_create_collection("sections")
+    collection = _collection("sections")
     for i, heading in enumerate(h2s):
         if not heading.strip():
             continue
@@ -154,7 +159,7 @@ def store_issues(final_report: dict) -> None:
         return
 
     site_score = final_report.get("site_intelligence_score", {}).get("total", 0)
-    collection = _get_chroma().get_or_create_collection("issues")
+    collection = _collection("issues")
 
     for i, issue in enumerate(issues):
         text = issue.get("issue") or ""
@@ -182,7 +187,7 @@ def find_similar_sites(url: str, n: int = 5) -> list[dict]:
     Find the N most similar pages in the corpus by embedding distance.
     Returns list of {url, domain, score, business_model, category, score_delta}.
     """
-    collection = _get_chroma().get_or_create_collection("pages")
+    collection = _collection("pages")
     result = collection.get(ids=[url], include=["embeddings", "metadatas"])
     embeddings = result.get("embeddings")
     if embeddings is None or len(embeddings) == 0:
@@ -226,7 +231,7 @@ def find_content_gaps(url: str, n_similar: int = 5) -> list[str]:
     if not better_sites:
         return []
 
-    sections_col = _get_chroma().get_or_create_collection("sections")
+    sections_col = _collection("sections")
 
     my_data = sections_col.get(where={"url": url}, include=["embeddings"])
     my_embeddings = my_data.get("embeddings")
@@ -261,7 +266,7 @@ def find_solved_problems(issue_text: str, min_score: int = 65, n: int = 3) -> li
     Sites that had a semantically similar issue and now score >= min_score.
     Returns list of {url, domain, score, issue, fix}.
     """
-    issues_col = _get_chroma().get_or_create_collection("issues")
+    issues_col = _collection("issues")
     if issues_col.count() == 0:
         return []
 

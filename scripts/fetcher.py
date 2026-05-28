@@ -71,6 +71,17 @@ def fetch_page(url: str) -> dict:
             # Otherwise wait a moment and try again.
             time.sleep(RETRY_DELAY)
 
+    # Defensive fallback: the loop above should always return, but if
+    # MAX_RETRIES is ever set to 0 the loop body never runs. Returning a
+    # well-shaped error dict keeps our "always returns a dict" promise.
+    return {
+        "html": "",
+        "headers": {},
+        "status_code": 0,
+        "final_url": url,
+        "error": "fetch_page: retry loop exited without result",
+    }
+
 
 def detect_spa(html: str) -> bool:
     """
@@ -112,6 +123,15 @@ def fetch_with_playwright(url: str) -> dict:
 
     Slower than `fetch_page` but necessary for JS-heavy sites.
     Requires `playwright install chromium` to have been run once.
+
+    Strategy:
+      1. Wait for `domcontentloaded` — fast, fires as soon as the HTML+JS
+         parser finishes (no waiting on images, ads, analytics).
+      2. THEN softly wait up to 5s for `networkidle` so JS-rendered content
+         (React, Vue, etc.) has time to populate the DOM. We don't fail
+         the whole fetch if networkidle never happens — many sites have
+         long-running connections (websockets, analytics beacons) that
+         keep them out of "idle" forever.
     """
     try:
         # Import inside the function so the module still loads
@@ -121,7 +141,17 @@ def fetch_with_playwright(url: str) -> dict:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page(user_agent=USER_AGENT)
-            response = page.goto(url, wait_until="networkidle", timeout=30000)
+
+            # Fast initial load — fires when HTML+JS parsing is done.
+            response = page.goto(url, wait_until="domcontentloaded", timeout=30000)
+
+            # Soft wait for JS to settle. If it never reaches networkidle,
+            # that's fine — we still get whatever content has rendered by 5s.
+            try:
+                page.wait_for_load_state("networkidle", timeout=5000)
+            except Exception:
+                pass  # OK: some sites never go idle. Move on.
+
             html = page.content()
             final_url = page.url
             status = response.status if response else 0
@@ -248,7 +278,7 @@ def _parse_sitemap_xml(content: bytes) -> dict:
     return {"urls": urls, "sub_sitemaps": sub_sitemaps}
 
 
-def fetch_sitemap(domain: str, sitemap_url: str = None) -> dict:
+def fetch_sitemap(domain: str, sitemap_url: str | None = None) -> dict:
     """
     Fetch and parse a sitemap, handling both regular sitemaps and sitemap indexes.
 
