@@ -106,6 +106,26 @@ def parse_viewport(soup: BeautifulSoup) -> dict:
 # 2. CONTENT STRUCTURE
 # ═════════════════════════════════════════════════════════════
 
+def _clean_heading(tag) -> str:
+    """Extract clean text from a heading tag.
+
+    separator=' ' adds a space between child elements so adjacent inline spans
+    don't run together (e.g. 'product' + 'development' → 'product development').
+    After that, collapse whitespace and strip repeated phrases — some JS frameworks
+    embed 2–3 responsive variants of the same heading inside one <h1>/<h2>.
+    """
+    text = re.sub(r'\s+', ' ', tag.get_text(separator=' ')).strip()
+    words = text.split()
+    n = len(words)
+    for divisor in [3, 2]:
+        if n >= divisor * 4 and n % divisor == 0:
+            chunk = n // divisor
+            if all(words[i * chunk:(i + 1) * chunk] == words[:chunk]
+                   for i in range(1, divisor)):
+                return ' '.join(words[:chunk])
+    return text
+
+
 def parse_headings(soup: BeautifulSoup) -> dict:
     """H1/H2/H3 lists with counts."""
     result = {}
@@ -113,7 +133,7 @@ def parse_headings(soup: BeautifulSoup) -> dict:
         tags = soup.find_all(level)
         result[level] = {
             "count": len(tags),
-            "texts": [t.get_text(strip=True) for t in tags],
+            "texts": [_clean_heading(t) for t in tags],
         }
     return result
 

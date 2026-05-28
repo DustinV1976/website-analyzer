@@ -25,16 +25,16 @@ Store all three in a `.env` file. Never commit that file to GitHub.
 
 ## Phase 0 — Project Setup
 
-- [ ] Create GitHub repo: `website-analyzer`
+- [x] Create GitHub repo: `website-analyzer`
 - [x] Set up Python virtual environment: `python -m venv venv`
-- [ ] Create `requirements.txt` with:
+- [x] Create `requirements.txt` with:
   - `streamlit`, `requests`, `beautifulsoup4`, `lxml`
   - `playwright`, `chromadb`, `openai`
   - `textstat`, `python-dotenv`, `tqdm`
 - [x] Run `pip install requests beautifulsoup4 lxml textstat`
-- [ ] Run `playwright install chromium`
-- [ ] Create `.env` file with the three keys above
-- [ ] Add `.env` to `.gitignore`
+- [x] Run `playwright install chromium`
+- [x] Create `.env` file with the three keys above
+- [x] Add `.env` to `.gitignore`
 - [x] Create this folder structure:
 
 ```
@@ -241,11 +241,11 @@ website-analyzer/
 - [x] Saves full `FINAL_REPORT` as JSON to `data/reports/<domain>_<timestamp>.json`
 - [x] Graceful error handling: KeyboardInterrupt exits cleanly, exceptions print traceback
 
-- [ ] ✅ **Milestone:** Test on 5+ real URLs across different business types — scores feel accurate
-  - Test a local services site (plumber, dentist, restaurant)
-  - Test an ecommerce site — confirm no Local SEO issues appear
-  - Test a SaaS site — confirm no Local SEO issues appear
-  - Confirm business model classification is correct for each
+- [x] ✅ **Milestone:** Test on 5+ real URLs across different business types — scores feel accurate
+  - [x] Test a local services site (plumber, dentist, restaurant) — Roto-Rooter ✅, Miami Beach Smiles ✅
+  - [x] Test an ecommerce site — confirm no Local SEO issues appear — Chewy ✅ (Playwright fallback), threesidepeptides ✅
+  - [x] Test a SaaS site — confirm no Local SEO issues appear — Linear ✅
+  - [x] Confirm business model classification is correct for each
 
 ---
 

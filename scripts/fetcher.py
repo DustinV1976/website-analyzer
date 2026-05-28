@@ -145,19 +145,42 @@ def fetch_with_playwright(url: str) -> dict:
         }
 
 
+def _missing_title(html: str) -> bool:
+    """True when a substantial HTML response has no populated <title> tag.
+
+    Catches SPAs whose inline JSON bloats word count past the detect_spa()
+    threshold (e.g. Next.js app-router pages, Chewy, Vercel-hosted React apps).
+    We only trigger for responses >1 KB so we don't waste Playwright on 404s.
+    """
+    if not html or len(html) < 1000:
+        return False
+    return not re.search(r"<title[^>]*>\s*\S", html, re.IGNORECASE)
+
+
 def smart_fetch(url: str) -> dict:
     """
     The function the agents actually call.
 
-    Tries plain `requests` first (fast). If that returns an SPA shell,
-    falls back to Playwright (slower but real browser).
+    Tries plain `requests` first (fast). Falls back to Playwright when either:
+      - detect_spa() fires (SPA marker + low word count), OR
+      - the response has substantial HTML but no <title> content (JS-rendered shell
+        whose inline data fools the word-count check in detect_spa).
 
     The returned dict has an extra "fetch_method" key so we know which one ran.
     """
     result = fetch_page(url)
 
-    if detect_spa(result["html"]):
-        result = fetch_with_playwright(url)
+    html = result.get("html", "")
+    status = result.get("status_code", 0)
+    # Also try Playwright on non-200 status (429 rate-limit, 403 bot-block, etc.)
+    # — a real browser fingerprint often gets through where requests doesn't.
+    blocked = status not in (0, 200, 301, 302, 304)
+
+    if detect_spa(html) or _missing_title(html) or blocked:
+        playwright_result = fetch_with_playwright(url)
+        # Only swap if Playwright actually got content
+        if playwright_result.get("html"):
+            result = playwright_result
         result["fetch_method"] = "playwright"
     else:
         result["fetch_method"] = "requests"
@@ -204,43 +227,86 @@ def fetch_robots_txt(domain: str) -> dict:
         return {"found": False, "disallowed_paths": [], "sitemap_url": None}
 
 
+def _parse_sitemap_xml(content: bytes) -> dict:
+    """
+    Parse a sitemap or sitemap index XML body.
+
+    Sitemap index files list <sitemap><loc> entries pointing to sub-sitemaps.
+    Regular sitemaps list <url><loc> entries — the actual pages.
+    Returns {"urls": [...], "sub_sitemaps": [...]} so the caller can recurse.
+    """
+    namespace = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError:
+        return {"urls": [], "sub_sitemaps": []}
+
+    # Regular sitemap: <urlset><url><loc>
+    urls = [el.text for el in root.findall("sm:url/sm:loc", namespace) if el.text]
+    # Sitemap index: <sitemapindex><sitemap><loc>
+    sub_sitemaps = [el.text for el in root.findall("sm:sitemap/sm:loc", namespace) if el.text]
+    return {"urls": urls, "sub_sitemaps": sub_sitemaps}
+
+
 def fetch_sitemap(domain: str, sitemap_url: str = None) -> dict:
     """
-    Fetch and parse sitemap.xml.
+    Fetch and parse a sitemap, handling both regular sitemaps and sitemap indexes.
 
-    If a sitemap_url isn't passed in, we guess /sitemap.xml.
-    We also infer rough "content categories" from the URL paths
-    (e.g. /blog/, /services/, /products/) — useful for site-structure analysis.
+    Tries the URL from robots.txt first, then falls back through common paths:
+    /sitemap.xml → /sitemap_index.xml → /wp-sitemap.xml
+
+    Sitemap indexes (common in WordPress/Yoast) point to sub-sitemaps
+    (e.g. page-sitemap.xml, product-sitemap.xml). We follow one level of
+    indirection and aggregate all URLs across sub-sitemaps.
     """
-    if sitemap_url is None:
-        sitemap_url = f"https://{domain}/sitemap.xml"
+    headers = {"User-Agent": USER_AGENT}
+    candidates = []
+    if sitemap_url:
+        candidates.append(sitemap_url)
+    candidates += [
+        f"https://{domain}/sitemap.xml",
+        f"https://{domain}/sitemap_index.xml",
+        f"https://{domain}/wp-sitemap.xml",
+    ]
 
-    try:
-        response = requests.get(sitemap_url, headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT)
-        if response.status_code != 200:
-            return {"found": False, "page_count": 0, "url_list": [], "content_categories": []}
+    raw_content = None
+    for url in candidates:
+        try:
+            r = requests.get(url, headers=headers, timeout=TIMEOUT)
+            if r.status_code == 200 and r.content:
+                raw_content = r.content
+                break
+        except requests.exceptions.RequestException:
+            continue
 
-        # Sitemap XML uses a namespace — we have to tell ElementTree about it.
-        namespace = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
-        root = ET.fromstring(response.content)
-
-        urls = [el.text for el in root.findall("sm:url/sm:loc", namespace) if el.text]
-
-        # Top-level path segment becomes the "category" (e.g. /blog/post-1 → blog)
-        categories = set()
-        for u in urls:
-            parts = urlparse(u).path.strip("/").split("/")
-            if parts and parts[0]:
-                categories.add(parts[0])
-
-        return {
-            "found": True,
-            "page_count": len(urls),
-            "url_list": urls,
-            "content_categories": sorted(categories),
-        }
-    except (requests.exceptions.RequestException, ET.ParseError):
+    if not raw_content:
         return {"found": False, "page_count": 0, "url_list": [], "content_categories": []}
+
+    parsed = _parse_sitemap_xml(raw_content)
+    all_urls = list(parsed["urls"])
+
+    # Follow sub-sitemap links one level deep (sitemap index pattern)
+    for sub_url in parsed["sub_sitemaps"]:
+        try:
+            r = requests.get(sub_url, headers=headers, timeout=TIMEOUT)
+            if r.status_code == 200 and r.content:
+                sub = _parse_sitemap_xml(r.content)
+                all_urls.extend(sub["urls"])
+        except requests.exceptions.RequestException:
+            continue
+
+    categories = set()
+    for u in all_urls:
+        parts = urlparse(u).path.strip("/").split("/")
+        if parts and parts[0]:
+            categories.add(parts[0])
+
+    return {
+        "found": True,
+        "page_count": len(all_urls),
+        "url_list": all_urls,
+        "content_categories": sorted(categories),
+    }
 
 
 def fetch_subpage(domain: str, path: str) -> dict:

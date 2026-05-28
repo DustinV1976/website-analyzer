@@ -31,8 +31,15 @@ from urllib.parse import urlparse
 BUSINESS_MODEL_SIGNALS = {
     "SaaS": {
         "keywords": ["software", "platform", "dashboard", "api", "integration",
-                     "free trial", "request demo", "pricing plan", "sign up free",
-                     "no credit card"],
+                     "free trial", "start free", "start for free", "try free",
+                     "request demo", "pricing plan", "sign up free", "no credit card",
+                     "subscription", "per month", "per user", "cancel anytime",
+                     "free plan", "upgrade", "downgrade",
+                     # B2B product / project-management vocabulary
+                     "workspace", "issue tracking", "project management",
+                     "roadmap", "workflow", "collaborate", "product teams",
+                     "sprint", "backlog", "deployment", "release",
+                     "saas", "cloud-based", "cloud based"],
         "schema_types": ["SoftwareApplication"],
         "cms_hints": [],
     },
@@ -43,16 +50,33 @@ BUSINESS_MODEL_SIGNALS = {
         "cms_hints": ["Shopify"],
     },
     "LocalServices": {
-        "keywords": ["call now", "schedule", "book online", "service area",
-                     "free estimate", "licensed", "insured", "emergency service",
-                     "same day", "near me", "serving"],
+        "keywords": [
+            # booking/contact actions
+            "call now", "call us", "call today", "schedule", "book online",
+            "book an appointment", "request an appointment", "free estimate",
+            "free consultation", "same day", "24/7", "emergency",
+            # trust/credentials
+            "licensed", "insured", "licensed and insured", "family owned",
+            "family-owned", "serving", "service area", "near me",
+            # industry terms — broad set so any trade/health/food vertical matches
+            "plumbing", "plumber", "drain", "hvac", "heating", "cooling",
+            "roofing", "electrician", "electrical", "locksmith", "pest control",
+            "landscaping", "lawn care", "cleaning service", "mold",
+            "dental", "dentist", "orthodontic", "teeth whitening",
+            "restaurant", "menu", "dine in", "takeout",
+            "attorney", "law firm", "personal injury",
+            "salon", "day spa", "massage", "med spa", "dermatology",
+            "auto repair", "oil change", "tire",
+        ],
         "schema_types": ["LocalBusiness", "Plumber", "Dentist", "Restaurant",
-                         "HomeAndConstructionBusiness", "HVACBusiness"],
+                         "HomeAndConstructionBusiness", "HVACBusiness",
+                         "AutoRepair", "LegalService", "MedicalBusiness",
+                         "BeautySalon", "FoodEstablishment"],
         "cms_hints": [],
     },
     "Agency": {
         "keywords": ["our work", "case studies", "portfolio", "our clients",
-                     "we partner", "our team", "our services", "agency"],
+                     "we partner", "our team", "agency"],
         "schema_types": ["ProfessionalService"],
         "cms_hints": [],
     },
@@ -125,13 +149,7 @@ CORPORATE_TONE_WORDS = ["proprietary", "enterprise-grade", "robust", "leverage",
 # ═════════════════════════════════════════════════════════════
 
 def _extract_all_text(report: dict) -> str:
-    """
-    Concatenate every piece of visible text we have in lowercase.
-
-    The agent doesn't have access to body copy directly (only headings + meta),
-    but that's usually enough for keyword-based pattern matching. If we later
-    add body text to the page inspector report, this is the one place to extend.
-    """
+    """Concatenate all available text signals in lowercase for keyword matching."""
     parts = []
     meta = report.get("meta", {})
     parts.append(meta.get("title", {}).get("text") or "")
@@ -140,6 +158,8 @@ def _extract_all_text(report: dict) -> str:
     headings = report.get("content", {}).get("headings", {})
     for level in ["h1", "h2", "h3"]:
         parts.extend(headings.get(level, {}).get("texts", []))
+
+    parts.append(report.get("content", {}).get("body_snippet") or "")
 
     return " ".join(parts).lower()
 
@@ -182,6 +202,17 @@ def classify_business_model(report: dict) -> dict:
         if model == "Ecommerce":
             score += sum(3 for sig in ECOMMERCE_ROBOTS_SIGNALS if sig in robots_paths)
         scores[model] = score
+
+    # A visible phone number is a strong local-services signal — no SaaS or
+    # ecommerce site leads with a phone number the way a plumber or dentist does.
+    if report.get("trust", {}).get("phone_visible"):
+        scores["LocalServices"] = scores.get("LocalServices", 0) + 2
+
+    # SoftwareApplication schema is an unambiguous SaaS signal — give it a
+    # decisive boost so it wins even when ecommerce schema is also present
+    # (e.g. a SaaS platform that uses Product/Offer schema for pricing plans).
+    if "SoftwareApplication" in schema_types:
+        scores["SaaS"] = scores.get("SaaS", 0) + 6
 
     # If nothing scored, we genuinely don't know
     if not any(scores.values()):

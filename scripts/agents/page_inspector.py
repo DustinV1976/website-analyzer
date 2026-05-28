@@ -57,6 +57,7 @@ def run(url: str, depth: str = "surface") -> dict:
         "author": parse_author_info(soup),
         "dates": parse_dates(soup),
         "readability_grade": score_readability(body_text),
+        "body_snippet": body_text[:3000],
     }
 
     local_check = check_local_business_schema(schema)
