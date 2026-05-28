@@ -5,8 +5,12 @@ Streamlit UI for the 4-agent SEO analysis engine.
 """
 
 import json
+import os
 import sys
 from pathlib import Path
+
+# Must be set before chromadb is imported — fixes protobuf version conflict on Streamlit Cloud
+os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT))
