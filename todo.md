@@ -249,47 +249,55 @@ website-analyzer/
 
 ---
 
-## Phase 2 — Data Layer
+## Phase 2 — Data Layer ✅ COMPLETE
 
-### 2a. SQLite Setup (`data/db.py`)
+### 2a. SQLite Setup (`data/db.py`) ✅
 
-- [ ] `init_db()` → create tables if they don't exist
-- [ ] `analyses` table:
+- [x] `init_db()` → create tables if they don't exist
+- [x] `analyses` table:
   ```
   id, url, domain, analysis_date, business_model,
   site_intelligence_score, seo_score, technical_score,
   business_score, trust_score, full_report_json
   ```
-- [ ] `sites` table:
+- [x] `sites` table:
   ```
   domain, first_seen, category, location, is_seed (0 or 1)
   ```
-- [ ] `save_analysis(final_report)` → insert/update both tables
-- [ ] `get_analysis(url)` → return most recent analysis for a URL
-- [ ] `get_all_analyses()` → return summary rows for the history sidebar
+- [x] `save_analysis(final_report)` → insert/update both tables
+- [x] `get_analysis(url)` → return most recent analysis for a URL
+- [x] `get_all_analyses()` → return summary rows for the history sidebar
 
-### 2b. ChromaDB Setup (`data/vector_store.py`)
+### 2b. ChromaDB Setup (`data/vector_store.py`) ✅
 
-- [ ] `init_chroma()` → initialize Chroma client with persistence at `data/chroma/`
-- [ ] Create three collections:
+- [x] `init_chroma()` → initialize Chroma client with persistence at `data/chroma/`
+- [x] Create three collections:
   - `pages` — full page embeddings (one per analyzed URL)
   - `sections` — H2-level section embeddings (multiple per URL)
   - `issues` — individual recommendation embeddings
-- [ ] `embed(text)` → call OpenAI `text-embedding-3-small`, return vector
-- [ ] `store_page(final_report)` → embed title + meta + H1 + first 2000 chars of content
+- [x] `embed(text)` → call OpenAI `text-embedding-3-small`, return vector
+- [x] `store_page(final_report)` → embed title + meta + H1 + first 2000 chars of content
   - Metadata stored with vector: url, domain, score, business_model, category, location, is_seed
-- [ ] `store_sections(final_report)` → embed each H2 heading + its paragraph text separately
-- [ ] `store_issues(final_report)` → embed each recommendation text
+  - `location` defaults to `""` (never `None`) — ChromaDB safe for sites without a location
+- [x] `store_sections(final_report)` → embed each H2 heading + its paragraph text separately
+- [x] `store_issues(final_report)` → embed each recommendation text
 
-### 2c. Hidden Connections Queries
+### 2c. Hidden Connections Queries ✅
 
-- [ ] `find_similar_sites(url, n=5)` → query `pages` collection for top N nearest neighbors
+- [x] `find_similar_sites(url, n=5)` → query `pages` collection for top N nearest neighbors
   - Return: url, domain, score, business_model, category, score delta vs. current site
-- [ ] `find_content_gaps(url)` → find H2 topic clusters in similar high-scoring sites absent here
+- [x] `find_content_gaps(url)` → find H2 topic clusters in similar high-scoring sites absent here
   - Return: list of topic strings the user's page is missing
-- [ ] `find_solved_problems(issue_text)` → sites with the same issue that now score higher
+- [x] `find_solved_problems(issue_text)` → sites with the same issue that now score higher
   - Return: list of `{ site, old_issue, what_they_changed }` dicts
-- [ ] ✅ **Milestone:** Run all three queries on 3 test URLs — results are relevant and useful
+- [x] ✅ **Milestone:** Run all three queries on 3 test URLs — results are relevant and useful
+
+### 2d. CLI location tag ✅
+
+- [x] `--location` flag added to `analyze.py` — optional, defaults to `""` if omitted
+  - Example: `python scripts/analyze.py https://example.com --location "Fort Lauderdale FL"`
+  - Stored in both SQLite `sites.location` and ChromaDB page metadata
+  - Enables `where={"location": "Fort Lauderdale FL"}` filters on hidden connections queries
 
 ---
 

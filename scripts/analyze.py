@@ -40,13 +40,15 @@ from scripts.agents.page_inspector import run as run_page_inspector
 from scripts.agents.seo_auditor import run as run_seo_auditor
 from scripts.agents.business_decoder import run as run_business_decoder
 from scripts.agents.synthesizer import run as run_synthesizer
+from scripts.db import init_db, save_analysis
+from scripts.vector_store import init_chroma, store_page, store_sections, store_issues
 
 
 # ─────────────────────────────────────────────────────────────
 # PIPELINE
 # ─────────────────────────────────────────────────────────────
 
-def analyze(url: str, depth: str = "surface", verbose: bool = True) -> dict:
+def analyze(url: str, depth: str = "surface", verbose: bool = True, location: str = None) -> dict:
     """
     Run the full 4-agent pipeline on a URL.
 
@@ -71,6 +73,22 @@ def analyze(url: str, depth: str = "surface", verbose: bool = True) -> dict:
 
     if verbose: print("  📊 Synthesizing final report...")
     final_report = run_synthesizer(page_report, seo_report, business_report)
+
+    if verbose: print("  💾 Saving to database...")
+    try:
+        init_db()
+        save_analysis(final_report, location=location)
+    except Exception as e:
+        if verbose: print(f"  ⚠️  DB save failed: {e}")
+
+    if verbose: print("  🔗 Indexing for hidden connections...")
+    try:
+        init_chroma()
+        store_page(final_report, location=location)
+        store_sections(final_report)
+        store_issues(final_report)
+    except Exception as e:
+        if verbose: print(f"  ⚠️  Vector store failed: {e}")
 
     return final_report
 
@@ -157,6 +175,12 @@ def main():
         help="Where to save the JSON report (default: data/reports)",
     )
     parser.add_argument(
+        "--location",
+        default=None,
+        help="Geographic tag for corpus filtering (e.g. 'Fort Lauderdale FL'). "
+             "Sites without a location are still analyzed — this tag is optional.",
+    )
+    parser.add_argument(
         "--quiet", action="store_true",
         help="Suppress progress messages — only print the final summary",
     )
@@ -171,7 +195,7 @@ def main():
 
     # ── Run the pipeline (catch any errors gracefully) ──
     try:
-        final_report = analyze(args.url, depth=args.depth, verbose=not args.quiet)
+        final_report = analyze(args.url, depth=args.depth, verbose=not args.quiet, location=args.location)
     except KeyboardInterrupt:
         print("\n⚠️  Analysis cancelled by user.")
         sys.exit(130)
