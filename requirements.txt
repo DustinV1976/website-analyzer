@@ -4,6 +4,7 @@ beautifulsoup4
 lxml
 playwright
 chromadb==1.5.9
+onnxruntime==1.26.0
 openai==2.38.0
 textstat
 python-dotenv
