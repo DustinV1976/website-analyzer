@@ -8,3 +8,4 @@ openai==2.38.0
 textstat
 python-dotenv
 tqdm
+protobuf>=4.25.3,<5

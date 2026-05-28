@@ -31,7 +31,7 @@ def run(url: str, depth: str = "surface") -> dict:
 
     sitemap = None
     if depth == "deep":
-        sitemap = fetch_sitemap(domain, robots.get("sitemap_url"))
+        sitemap = fetch_sitemap(domain, sitemap_urls=robots.get("sitemap_urls"))
         for path in ["/about", "/contact", "/services", "/reviews"]:
             fetch_subpage(domain, path)  # fetched but not stored on the report yet
 

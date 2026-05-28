@@ -56,7 +56,7 @@ def parse_meta_description(soup: BeautifulSoup) -> dict:
     tag = soup.find("meta", attrs={"name": "description"})
     if not tag or not tag.get("content"):
         return {"text": None, "length": 0, "optimal_length": False}
-    text = tag["content"].strip()
+    text = str(tag["content"]).strip()
     return {
         "text": text,
         "length": len(text),
@@ -74,7 +74,7 @@ def parse_open_graph(soup: BeautifulSoup) -> dict:
     """All <meta property="og:..."> tags as a dict."""
     og = {}
     for tag in soup.find_all("meta", attrs={"property": True}):
-        prop = tag.get("property", "")
+        prop = str(tag.get("property", ""))
         if prop.startswith("og:"):
             og[prop] = tag.get("content", "")
     return og
@@ -93,7 +93,7 @@ def parse_viewport(soup: BeautifulSoup) -> dict:
     tag = soup.find("meta", attrs={"name": "viewport"})
     if not tag:
         return {"present": False, "mobile_friendly": False, "content": None}
-    content = tag.get("content", "")
+    content = str(tag.get("content", ""))
     return {
         "present": True,
         "content": content,
@@ -187,7 +187,7 @@ def parse_author_info(soup: BeautifulSoup) -> dict:
     # Pattern 1: <meta name="author">
     meta_tag = soup.find("meta", attrs={"name": "author"})
     if meta_tag and meta_tag.get("content"):
-        author = meta_tag["content"].strip()
+        author = str(meta_tag["content"]).strip()
 
     # Pattern 2: <a rel="author">
     if not author:
@@ -304,7 +304,7 @@ def parse_links(soup: BeautifulSoup, base_url: str) -> dict:
     internal, external, anchors = [], [], []
 
     for a in soup.find_all("a", href=True):
-        href = a["href"]
+        href = str(a["href"])
         anchor_text = a.get_text(strip=True)
         if anchor_text:
             anchors.append(anchor_text)
@@ -497,7 +497,7 @@ def score_readability(text: str) -> dict:
         # Too little text to score reliably
         return {"grade_level": None, "audience": None}
 
-    grade = textstat.flesch_kincaid_grade(text)
+    grade = textstat.flesch_kincaid_grade(text)  # type: ignore[attr-defined]
 
     if grade < 9:
         audience = "general consumer"

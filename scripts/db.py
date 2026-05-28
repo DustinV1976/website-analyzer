@@ -50,8 +50,8 @@ def init_db() -> None:
 
 def save_analysis(
     final_report: dict,
-    category: str = None,
-    location: str = None,
+    category: str | None = None,
+    location: str | None = None,
     is_seed: bool = False,
 ) -> int:
     """
@@ -103,7 +103,7 @@ def save_analysis(
             ),
         )
 
-    return analysis_id
+    return analysis_id or 0
 
 
 def get_analysis(url: str) -> dict | None:

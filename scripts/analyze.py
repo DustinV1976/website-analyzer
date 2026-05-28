@@ -48,7 +48,7 @@ from scripts.vector_store import init_chroma, store_page, store_sections, store_
 # PIPELINE
 # ─────────────────────────────────────────────────────────────
 
-def analyze(url: str, depth: str = "surface", verbose: bool = True, location: str = None) -> dict:
+def analyze(url: str, depth: str = "surface", verbose: bool = True, location: str | None = None) -> dict:
     """
     Run the full 4-agent pipeline on a URL.
 

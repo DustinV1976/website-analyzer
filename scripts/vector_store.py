@@ -85,8 +85,8 @@ def _page_text(final_report: dict) -> str:
 
 def store_page(
     final_report: dict,
-    category: str = None,
-    location: str = None,
+    category: str | None = None,
+    location: str | None = None,
     is_seed: bool = False,
 ) -> None:
     """Embed the page summary and upsert into the pages collection."""
@@ -197,13 +197,15 @@ def find_similar_sites(url: str, n: int = 5) -> list[dict]:
     my_score = ((result.get("metadatas") or [{}])[0] or {}).get("score", 0)
 
     results = collection.query(
-        query_embeddings=[my_vector],
+        query_embeddings=[list(my_vector)],  # type: ignore[arg-type]
         n_results=min(n + 1, collection.count()),
         include=["metadatas", "distances"],
     )
 
     output = []
-    for meta, dist in zip(results["metadatas"][0], results["distances"][0]):
+    metas = (results.get("metadatas") or [[]])[0]
+    dists = (results.get("distances") or [[]])[0]
+    for meta, dist in zip(metas, dists):
         if (meta or {}).get("url") == url:
             continue
         output.append({
@@ -212,7 +214,7 @@ def find_similar_sites(url: str, n: int = 5) -> list[dict]:
             "score": meta.get("score"),
             "business_model": meta.get("business_model"),
             "category": meta.get("category"),
-            "score_delta": meta.get("score", 0) - my_score,
+            "score_delta": meta.get("score", 0) - my_score,  # type: ignore[operator]
             "distance": round(dist, 4),
         })
         if len(output) >= n:
@@ -252,7 +254,7 @@ def find_content_gaps(url: str, n_similar: int = 5) -> list[str]:
             if not doc:
                 continue
             if len(my_embeddings) > 0:
-                max_sim = max(_cosine(emb, mine) for mine in my_embeddings)
+                max_sim = max(_cosine(list(emb), list(mine)) for mine in my_embeddings)
                 if max_sim > 0.8:
                     continue
             if doc not in gaps:
@@ -279,10 +281,13 @@ def find_solved_problems(issue_text: str, min_score: int = 65, n: int = 3) -> li
 
     output = []
     seen_domains = set()
-    for meta, dist in zip(results["metadatas"][0], results["distances"][0]):
+    metas = (results.get("metadatas") or [[]])[0]
+    dists = (results.get("distances") or [[]])[0]
+    for meta, dist in zip(metas, dists):
         if dist > 0.5:
             continue
-        domain = (meta.get("url") or "").split("/")[2] if meta.get("url") else ""
+        url_str = str(meta.get("url") or "")
+        domain = url_str.split("/")[2] if url_str else ""
         if domain in seen_domains:
             continue
         seen_domains.add(domain)
