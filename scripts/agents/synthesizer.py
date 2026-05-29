@@ -13,6 +13,11 @@ What it produces:
   - Strategic Recommendations (top 3 high-effort, high-impact items)
   - A one-paragraph summary capturing the most important finding
 
+This version also folds business-decoder findings (missing testimonials,
+weak funnel stages, conspicuous content gaps, etc.) into the same ranking
+pipeline as SEO/technical issues — previously those findings were silently
+embedded in the report but never competed for a Quick Win or Strategic slot.
+
 Usage:
     from agents.synthesizer import run
     final = run(page_report, seo_report, business_report)
@@ -76,10 +81,7 @@ def calculate_business_clarity(business_report: dict) -> int:
 
 def calculate_trust_signals(page_report: dict, seo_report: dict) -> int:
     """Trust Signals = 20 pts: E-E-A-T trustworthiness + page-level trust elements."""
-    # E-E-A-T trustworthiness pillar already scored 0-10
     trust_eeat = seo_report.get("eeat", {}).get("trustworthiness", 0)
-
-    # Page-level trust elements
     trust = page_report.get("trust", {})
     elements = 0
     if trust.get("https"): elements += 2
@@ -121,44 +123,69 @@ def score_business_impact(issue: dict) -> int:
     # Base score from severity
     base = {"critical": 7, "important": 4, "minor": 1}.get(severity, 1)
 
-    # Boost: trust-killers are the worst — broken HTTPS, missing contact info
+    # ── Technical / SEO boosts ──
     if category == "Security":
-        base += 3
-    # Boost: local SEO matters more for our Fort Lauderdale targets
+        base += 3   # trust-killers — broken HTTPS, missing contact info
     if category == "Local SEO":
-        base += 2
-    # Boost: performance affects bounce rate AND rankings
+        base += 2   # critical for local-services businesses
     if category == "Performance":
-        base += 1
-    # Boost: discovery-blockers
+        base += 1   # affects bounce rate AND rankings
     if any(kw in text for kw in ["title", "h1", "canonical"]):
-        base += 1
+        base += 1   # discovery-blockers
+
+    # ── Business-decoder issue boosts ──
+    if category == "Conversion":
+        base += 3   # highest boost — directly costs revenue
+    if category == "Trust":
+        base += 2   # testimonials, ratings, about-us are nearly as critical
+    if category == "Positioning":
+        base += 1   # differentiators matter but slower-acting
+    # Note: Content and Retention get no boost — severity carries them
 
     return min(base, 10)
 
 
 def estimate_effort(issue: dict) -> str:
-    """Rough effort estimate: 'low' / 'medium' / 'high'."""
+    """
+    Rough effort estimate: 'low' / 'medium' / 'high'.
+
+    We match against the issue *text* (and category) so the same function
+    works whether the issue came from the SEO auditor or the business decoder.
+    """
     text = issue.get("issue", "").lower()
     category = issue.get("category", "")
 
-    # Low-effort: tag-level fixes and quick visual additions
-    low_signals = ["meta description", "canonical", "viewport", "open graph",
-                   "twitter card", "title tag", "missing <title>",
-                   "missing h1", "no h1", "multiple h1",
-                   "sitemap", "robots.txt",
-                   "client logo", "conversion-stage"]
+    # ── Low-effort: tag-level fixes and quick visual additions ──
+    low_signals = [
+        # Meta and HTML-tag fixes
+        "meta description", "canonical", "viewport", "open graph",
+        "twitter card", "title tag", "missing <title>",
+        "missing h1", "no h1", "multiple h1",
+        # Discoverability files (just upload them)
+        "sitemap", "robots.txt",
+        # Quick visual / copy additions
+        "client logo", "about-us", "about us",
+        # Conversion CTAs — usually one button or one line of copy
+        "conversion stage",
+    ]
     if any(s in text for s in low_signals):
         return "low"
 
-    # High-effort: content production, performance work, structural changes
-    high_signals = ["case stud", "blog", "ongoing content", "awareness-stage"]
+    # ── High-effort: content production, performance work, structural change ──
+    high_signals = [
+        # Content production
+        "case stud", "blog", "ongoing content",
+        # Funnel content gaps that need real writing
+        "awareness stage", "consideration stage missing",
+        # Strategic content
+        "competitive comparison",
+    ]
     if category == "Performance" or any(s in text for s in high_signals):
         return "high"
 
-    # Everything else is medium: Schema/Local SEO (JSON-LD research + writing),
-    # Trust elements (testimonials, ratings), consideration/retention funnel
-    # gaps, and differentiator copy.
+    # ── Everything else is medium ──
+    # Trust testimonials/ratings, positioning copy, schema work, Local SEO,
+    # retention email capture, pricing transparency, consideration-thin gaps.
     return "medium"
 
 
@@ -166,14 +193,21 @@ def filter_issues_by_business_model(issues: list, business_model: str) -> list:
     """
     Strip irrelevant issues based on what kind of business this is.
 
-    Local SEO checks (Fort Lauderdale location, LocalBusiness schema) only
-    make sense for LocalServices sites. For ecommerce, SaaS, media, etc.,
-    those recommendations would be wrong and confusing.
+    - LocalServices → keep everything (Local SEO genuinely matters here)
+    - Media         → drop Local SEO AND commerce-flavored business signals
+                      (a news site doesn't need "add testimonials")
+    - Everything else → just drop Local SEO
     """
     if business_model == "LocalServices":
-        return issues  # keep everything for local businesses
+        return issues
 
-    # For all other business types, remove Local SEO issues entirely
+    if business_model == "Media":
+        # Media sites: also drop conversion/positioning/retention since they
+        # don't apply the same way. Trust we still keep (author info, contact).
+        drop = {"Local SEO", "Conversion", "Positioning", "Retention"}
+        return [i for i in issues if i.get("category") not in drop]
+
+    # Ecommerce, SaaS, Agency, LeadGen, Unknown — just drop Local SEO
     return [i for i in issues if i.get("category") != "Local SEO"]
 
 
@@ -195,15 +229,18 @@ def select_recommendations(annotated_issues: list) -> dict:
     Pick top 3 Quick Wins (low-effort, high-impact) and top 3 Strategic
     Recommendations (high-effort, high-impact). Both lists are sorted by impact.
 
-    If we run out of low-effort issues, we backfill from medium-effort —
-    better to surface SOMETHING actionable than leave the list short.
+    Both lists backfill from medium-effort if there aren't enough — better
+    to surface SOMETHING actionable than to leave the section empty.
+    Strategic backfill requires impact >= 5 so we don't promote noise.
     """
+    # Quick Wins
     quick_wins = [i for i in annotated_issues if i["effort"] == "low"][:3]
     if len(quick_wins) < 3:
         backfill = [i for i in annotated_issues
                     if i["effort"] == "medium" and i not in quick_wins]
         quick_wins.extend(backfill[: 3 - len(quick_wins)])
 
+    # Strategic Recommendations
     strategic = [i for i in annotated_issues if i["effort"] == "high"][:3]
     if len(strategic) < 3:
         backfill = [i for i in annotated_issues
@@ -218,49 +255,141 @@ def select_recommendations(annotated_issues: list) -> dict:
 
 # ═════════════════════════════════════════════════════════════
 # 3. BUSINESS SIGNAL → ISSUES CONVERSION
+# Turns business-decoder findings into the same {severity, category, issue,
+# fix} shape that the SEO auditor uses, so they all compete for ranking.
 # ═════════════════════════════════════════════════════════════
 
-def issues_from_business_report(business_report: dict) -> list:
-    """Turn business decoder findings into issues for the ranking pipeline."""
-    issues = []
-    proof = business_report.get("positioning", {}).get("proof_elements", {})
-    funnel = business_report.get("funnel", {})
-    differentiators = business_report.get("positioning", {}).get("differentiators", [])
+def issues_from_business_report(
+    business_report: dict,
+    business_model: str,
+) -> list:
+    """
+    Convert business-decoder findings into issues for the ranking pipeline.
 
-    if not proof.get("testimonials"):
+    The business decoder already detects:
+      - missing proof elements (testimonials, case studies, ratings, logos)
+      - empty differentiator list
+      - weak/missing funnel stages
+      - conspicuous content gaps (pricing, comparisons, about-us, etc.)
+
+    Without this conversion, none of those findings ever competed for a
+    Quick Win or Strategic slot — they were silently embedded in the
+    business_decoder section of the report and shown in expandable panels,
+    but the user never saw them at the top.
+
+    business_model is passed in so Media sites can skip the commerce-flavored
+    issues that don't apply to news/blog publishers.
+    """
+    issues = []
+
+    positioning = business_report.get("positioning", {})
+    proof = positioning.get("proof_elements", {})
+    differentiators = positioning.get("differentiators", [])
+    funnel = business_report.get("funnel", {})
+    gaps = business_report.get("competitive_signals", {}).get("conspicuous_gaps", [])
+
+    is_media = business_model == "Media"
+
+    # ── Proof elements ──
+    if not is_media and not proof.get("testimonials"):
         issues.append({"severity": "important", "category": "Trust",
             "issue": "No testimonials on page",
-            "fix": "Add 3-5 customer testimonials with names and photos."})
-    if not proof.get("case_studies"):
+            "fix": "Add 3-5 customer testimonials with names and photos to build trust."})
+
+    if not is_media and not proof.get("case_studies"):
         issues.append({"severity": "important", "category": "Content",
             "issue": "No case studies or success stories",
-            "fix": "Publish 2-3 case studies showing real client outcomes."})
-    if not proof.get("ratings"):
-        issues.append({"severity": "important", "category": "Trust",
-            "issue": "No ratings or review count displayed",
-            "fix": "Show star ratings or a review count pulled from Google or Yelp."})
-    if not proof.get("client_logos"):
-        issues.append({"severity": "minor", "category": "Trust",
-            "issue": "No client logos or partner badges",
-            "fix": "Add a logo strip of recognisable clients or partners."})
-    if not differentiators:
-        issues.append({"severity": "important", "category": "Content",
-            "issue": "No clear differentiators on page",
-            "fix": "State 2-3 reasons why a visitor should choose you over competitors."})
+            "fix": "Publish 2-3 case studies showing real client outcomes with metrics."})
 
-    funnel_fixes = {
-        "awareness":     "Add educational content (blog posts, guides, or videos) to attract top-of-funnel visitors.",
-        "consideration": "Add comparison content, FAQs, or a 'Why us?' section to help visitors evaluate you.",
-        "conversion":    "Add a clear call-to-action (form, booking link, or phone number) above the fold.",
-        "retention":     "Add a newsletter sign-up or loyalty touchpoint to stay in contact after the first visit.",
+    if not is_media and not proof.get("ratings"):
+        issues.append({"severity": "important", "category": "Trust",
+            "issue": "No customer ratings or reviews displayed",
+            "fix": "Embed Google/Yelp reviews and add AggregateRating schema for star snippets."})
+
+    if not is_media and not proof.get("client_logos"):
+        issues.append({"severity": "minor", "category": "Trust",
+            "issue": "No client logos displayed",
+            "fix": "Add a 'trusted by' row of client/partner logos near the top of the page."})
+
+    # ── Differentiators ──
+    if not is_media and not differentiators:
+        issues.append({"severity": "important", "category": "Positioning",
+            "issue": "No clear differentiators in page copy",
+            "fix": "Add 1-2 sentences explaining what makes you different — 'the only X', 'award-winning Y', etc."})
+
+    # ── Funnel stages ──
+    # Naming convention: "Funnel: <stage> stage <state>" — the words
+    # "awareness stage" / "consideration stage" / "conversion stage" are
+    # what estimate_effort() matches on to pick the right effort bucket.
+    aware = funnel.get("awareness", {}).get("strength")
+    consider = funnel.get("consideration", {}).get("strength")
+    convert = funnel.get("conversion", {}).get("strength")
+    retain = funnel.get("retention", {}).get("strength")
+
+    if aware == "missing" and not is_media:
+        issues.append({"severity": "important", "category": "Content",
+            "issue": "Funnel: awareness stage missing",
+            "fix": "Add top-of-funnel content (blog, guides, 'how to' articles) to attract first-time visitors."})
+
+    if consider == "missing" and not is_media:
+        issues.append({"severity": "important", "category": "Content",
+            "issue": "Funnel: consideration stage missing",
+            "fix": "Add comparison content, demo videos, or feature deep-dives for visitors who are evaluating you."})
+    elif consider == "thin" and not is_media:
+        issues.append({"severity": "minor", "category": "Content",
+            "issue": "Funnel: consideration stage thin",
+            "fix": "Strengthen mid-funnel content — testimonials, demos, FAQ, or comparison pages."})
+
+    if convert == "missing" and not is_media:
+        issues.append({"severity": "critical", "category": "Conversion",
+            "issue": "Funnel: conversion stage missing",
+            "fix": "Add a clear call-to-action (book now, get a quote, sign up) above the fold."})
+    elif convert == "thin" and not is_media:
+        issues.append({"severity": "important", "category": "Conversion",
+            "issue": "Funnel: conversion stage thin",
+            "fix": "Strengthen your primary CTA — make it visually prominent and repeat it on the page."})
+
+    if retain == "missing" and not is_media:
+        issues.append({"severity": "minor", "category": "Retention",
+            "issue": "Funnel: retention stage missing",
+            "fix": "Add a newsletter signup or email capture to nurture leads who don't convert immediately."})
+
+    # ── Competitive content gaps ──
+    # We skip the social-proof gap when proof_elements already raised it
+    # to avoid duplicate-feeling issues at the top of the report.
+    gap_map = {
+        "No pricing or cost transparency": {
+            "severity": "important", "category": "Content",
+            "issue": "No pricing or cost transparency",
+            "fix": "Add at least starter pricing or a 'request a quote' link — opacity hurts trust and conversion."},
+        "No competitive comparison content": {
+            "severity": "minor", "category": "Content",
+            "issue": "No competitive comparison content",
+            "fix": "Publish a 'vs competitor' or 'alternative to X' page to capture comparison-stage searches."},
+        "No 'about us' or team mentions": {
+            "severity": "important", "category": "Trust",
+            "issue": "No about-us or team information",
+            "fix": "Add an About page or team section — people buy from people, especially for local services."},
     }
-    for stage, data in funnel.items():
-        strength = data.get("strength", "present")
-        if strength in ("missing", "thin"):
-            severity = "important" if strength == "missing" else "minor"
-            issues.append({"severity": severity, "category": "Content",
-                "issue": f"{stage.title()}-stage funnel content is {strength}",
-                "fix": funnel_fixes.get(stage, f"Strengthen your {stage} content.")})
+    # Track which proof-related issues we've already emitted so we don't
+    # double-emit the same concern from a different source.
+    skip_social_proof_gap = any(
+        i["issue"] == "No testimonials on page" for i in issues
+    )
+
+    for gap in gaps:
+        if gap == "No customer or social proof mentions" and skip_social_proof_gap:
+            continue
+        if gap in gap_map:
+            cfg = gap_map[gap]
+            if is_media and cfg["category"] in {"Conversion", "Positioning", "Retention"}:
+                continue
+            issues.append({
+                "severity": cfg["severity"],
+                "category": cfg["category"],
+                "issue": cfg["issue"],
+                "fix": cfg["fix"],
+            })
 
     return issues
 
@@ -293,13 +422,15 @@ def run(page_report: dict, seo_report: dict, business_report: dict) -> dict:
     bm = business_report.get("business_model", {})
     business_model = bm.get("primary", "Unknown")
 
-    # Filter out irrelevant issue categories before ranking, then fold in
-    # business-signal issues (trust gaps, funnel holes, missing proof elements)
-    relevant_issues = filter_issues_by_business_model(
+    # 1. Filter SEO/technical issues by business model (drop Local SEO etc.)
+    seo_issues = filter_issues_by_business_model(
         seo_report.get("issues", []), business_model
     )
-    all_issues = relevant_issues + issues_from_business_report(business_report)
-    annotated = annotate_issues(all_issues)
+    # 2. Convert business-decoder findings into the same issue shape
+    business_issues = issues_from_business_report(business_report, business_model)
+    # 3. Merge, annotate with effort+impact, sort by impact
+    annotated = annotate_issues(seo_issues + business_issues)
+    # 4. Pick top 3 of each type
     recs = select_recommendations(annotated)
 
     # ── Build the one-line summary ──
@@ -340,13 +471,13 @@ def run(page_report: dict, seo_report: dict, business_report: dict) -> dict:
 
 # ─────────────────────────────────────────────────────────────
 # QUICK TEST
-# Uses a more realistic "mediocre site" example with several issues
-# so we can see Quick Wins and Strategic Recommendations populated.
 # Run with:  python scripts/agents/synthesizer.py
+# Uses a realistic "Fort Lauderdale dentist" with many gaps so we can see
+# Quick Wins AND Strategic Recommendations populated from BOTH SEO/technical
+# issues AND business-decoder findings.
 # ─────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    # ── Fake page report for a Fort Lauderdale dentist with some issues ──
     fake_page = {
         "url": "https://example-dentist.com/",
         "domain": "example-dentist.com",
@@ -357,7 +488,6 @@ if __name__ == "__main__":
         },
     }
 
-    # ── Fake SEO audit with multiple issues at different severities ──
     fake_seo = {
         "url": "https://example-dentist.com/",
         "eeat": {"experience": 5, "expertise": 3, "authoritativeness": 6,
@@ -372,7 +502,7 @@ if __name__ == "__main__":
         "technical_checklist": {
             "critical": {"has_title": True, "has_meta_description": False,
                          "has_h1": True, "exactly_one_h1": True, "https": True,
-                         "has_canonical": False, "has_sitemap": True},
+                         "has_canonical": False, "has_sitemap": False},
             "important": {"has_schema": False, "has_open_graph": False,
                           "mobile_viewport": True, "title_optimal_length": True,
                           "description_optimal_length": False},
@@ -388,6 +518,9 @@ if __name__ == "__main__":
             {"severity": "important", "category": "Meta",
              "issue": "No canonical URL declared",
              "fix": "Add <link rel='canonical'> to prevent duplicate-content issues."},
+            {"severity": "important", "category": "Technical",
+             "issue": "No XML sitemap detected",
+             "fix": "Create and submit a sitemap.xml to help search engines find all your pages."},
             {"severity": "critical", "category": "Performance",
              "issue": "LCP is Poor (4.5)",
              "fix": "LCP is very slow. Compress images, defer JS."},
@@ -403,7 +536,6 @@ if __name__ == "__main__":
         ],
     }
 
-    # ── Fake business decoder report ──
     fake_business = {
         "url": "https://example-dentist.com/",
         "business_model": {"primary": "LocalServices", "confidence": "medium",
@@ -413,12 +545,20 @@ if __name__ == "__main__":
             "differentiators": [],
             "proof_elements": {"testimonials": False, "case_studies": False,
                                "ratings": False, "client_logos": False},
+            "brand_tone": "professional",
         },
         "funnel": {
             "awareness": {"strength": "missing", "signals": []},
             "consideration": {"strength": "thin", "signals": ["review"]},
             "conversion": {"strength": "present", "signals": ["schedule", "call now"]},
             "retention": {"strength": "missing", "signals": []},
+        },
+        "competitive_signals": {
+            "mentioned_domains": [],
+            "conspicuous_gaps": [
+                "No pricing or cost transparency",
+                "No 'about us' or team mentions",
+            ],
         },
     }
 
@@ -442,10 +582,10 @@ if __name__ == "__main__":
 
     print(f"\n── QUICK WINS (low effort, high impact) ──")
     for i, win in enumerate(final["quick_wins"], 1):
-        print(f"  {i}. [impact {win['impact']}] {win['issue']}")
+        print(f"  {i}. [impact {win['impact']}, effort {win['effort']}] {win['issue']}")
         print(f"     → {win['fix']}")
 
     print(f"\n── STRATEGIC RECOMMENDATIONS (high effort, high impact) ──")
     for i, rec in enumerate(final["strategic_recommendations"], 1):
-        print(f"  {i}. [impact {rec['impact']}] {rec['issue']}")
+        print(f"  {i}. [impact {rec['impact']}, effort {rec['effort']}] {rec['issue']}")
         print(f"     → {rec['fix']}")

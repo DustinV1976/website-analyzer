@@ -168,6 +168,7 @@ def run_analysis(url: str, depth: str) -> dict:
 
     with st.status("Analyzing website...", expanded=True) as status:
         st.write("📄 Fetching and parsing page...")
+        st.write("⚡ Measuring Core Web Vitals via PageSpeed Insights (this can take 30+ seconds)...")
         page_report = run_page_inspector(url, depth)
 
         st.write("🔎 Running SEO audit...")

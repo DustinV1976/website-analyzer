@@ -63,6 +63,7 @@ def analyze(url: str, depth: str = "surface", verbose: bool = True, location: st
     if verbose: print(f"🔍 Analyzing {url}  (depth: {depth})")
 
     if verbose: print("  📄 Fetching and parsing page...")
+    if verbose: print("  ⚡ Measuring Core Web Vitals (PageSpeed Insights — ~30s)...")
     page_report = run_page_inspector(url, depth)
 
     if verbose: print("  🔎 Running SEO audit...")

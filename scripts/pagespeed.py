@@ -26,6 +26,7 @@ Requires PAGESPEED_API_KEY in the .env file. Get one for free at:
 """
 
 import os
+from typing import Any
 import requests
 from dotenv import load_dotenv
 
@@ -55,7 +56,7 @@ EMPTY_RESULT = {
 # HELPERS
 # ─────────────────────────────────────────────────────────────
 
-def _safe_get(dct, *keys, default=None):
+def _safe_get(dct: dict, *keys: str, default: Any = None) -> Any:
     """
     Walk a nested dict safely. PSI responses have deep paths like
     response['lighthouseResult']['audits']['largest-contentful-paint']['numericValue']
@@ -63,13 +64,14 @@ def _safe_get(dct, *keys, default=None):
 
     Returns `default` (None) the moment any key is absent.
     """
+    cur: Any = dct
     for key in keys:
-        if not isinstance(dct, dict):
+        if not isinstance(cur, dict):
             return default
-        dct = dct.get(key)
-        if dct is None:
+        cur = cur.get(key)
+        if cur is None:
             return default
-    return dct
+    return cur
 
 
 # ─────────────────────────────────────────────────────────────
@@ -163,7 +165,7 @@ def _extract_performance_category(psi_json: dict):
 
 def get_pagespeed(
     url: str,
-    api_key: str = None,
+    api_key: str | None = None,
     strategy: str = "mobile",
 ) -> dict:
     """
