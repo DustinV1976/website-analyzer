@@ -145,7 +145,8 @@ def estimate_effort(issue: dict) -> str:
     # Low-effort: things that are just adding or fixing a tag
     low_signals = ["meta description", "canonical", "viewport", "open graph",
                    "twitter card", "title tag", "missing <title>",
-                   "missing h1", "no h1", "multiple h1"]
+                   "missing h1", "no h1", "multiple h1",
+                   "sitemap", "robots.txt"]
     if any(s in text for s in low_signals):
         return "low"
 
@@ -205,12 +206,68 @@ def select_recommendations(annotated_issues: list) -> dict:
         quick_wins.extend(backfill[: 3 - len(quick_wins)])
 
     strategic = [i for i in annotated_issues if i["effort"] == "high"][:3]
+    if len(strategic) < 3:
+        backfill = [i for i in annotated_issues
+                    if i["effort"] == "medium"
+                    and i["impact"] >= 5
+                    and i not in strategic
+                    and i not in quick_wins]
+        strategic.extend(backfill[: 3 - len(strategic)])
 
     return {"quick_wins": quick_wins, "strategic_recommendations": strategic}
 
 
 # ═════════════════════════════════════════════════════════════
-# 3. MAIN AGENT FUNCTION
+# 3. BUSINESS SIGNAL → ISSUES CONVERSION
+# ═════════════════════════════════════════════════════════════
+
+def issues_from_business_report(business_report: dict) -> list:
+    """Turn business decoder findings into issues for the ranking pipeline."""
+    issues = []
+    proof = business_report.get("positioning", {}).get("proof_elements", {})
+    funnel = business_report.get("funnel", {})
+    differentiators = business_report.get("positioning", {}).get("differentiators", [])
+
+    if not proof.get("testimonials"):
+        issues.append({"severity": "important", "category": "Trust",
+            "issue": "No testimonials on page",
+            "fix": "Add 3-5 customer testimonials with names and photos."})
+    if not proof.get("case_studies"):
+        issues.append({"severity": "important", "category": "Content",
+            "issue": "No case studies or success stories",
+            "fix": "Publish 2-3 case studies showing real client outcomes."})
+    if not proof.get("ratings"):
+        issues.append({"severity": "important", "category": "Trust",
+            "issue": "No ratings or review count displayed",
+            "fix": "Show star ratings or a review count pulled from Google or Yelp."})
+    if not proof.get("client_logos"):
+        issues.append({"severity": "minor", "category": "Trust",
+            "issue": "No client logos or partner badges",
+            "fix": "Add a logo strip of recognisable clients or partners."})
+    if not differentiators:
+        issues.append({"severity": "important", "category": "Content",
+            "issue": "No clear differentiators on page",
+            "fix": "State 2-3 reasons why a visitor should choose you over competitors."})
+
+    funnel_fixes = {
+        "awareness":     "Add educational content (blog posts, guides, or videos) to attract top-of-funnel visitors.",
+        "consideration": "Add comparison content, FAQs, or a 'Why us?' section to help visitors evaluate you.",
+        "conversion":    "Add a clear call-to-action (form, booking link, or phone number) above the fold.",
+        "retention":     "Add a newsletter sign-up or loyalty touchpoint to stay in contact after the first visit.",
+    }
+    for stage, data in funnel.items():
+        strength = data.get("strength", "present")
+        if strength in ("missing", "thin"):
+            severity = "important" if strength == "missing" else "minor"
+            issues.append({"severity": severity, "category": "Content",
+                "issue": f"{stage.title()}-stage funnel content is {strength}",
+                "fix": funnel_fixes.get(stage, f"Strengthen your {stage} content.")})
+
+    return issues
+
+
+# ═════════════════════════════════════════════════════════════
+# 4. MAIN AGENT FUNCTION
 # ═════════════════════════════════════════════════════════════
 
 def run(page_report: dict, seo_report: dict, business_report: dict) -> dict:
@@ -237,11 +294,13 @@ def run(page_report: dict, seo_report: dict, business_report: dict) -> dict:
     bm = business_report.get("business_model", {})
     business_model = bm.get("primary", "Unknown")
 
-    # Filter out irrelevant issue categories before ranking
+    # Filter out irrelevant issue categories before ranking, then fold in
+    # business-signal issues (trust gaps, funnel holes, missing proof elements)
     relevant_issues = filter_issues_by_business_model(
         seo_report.get("issues", []), business_model
     )
-    annotated = annotate_issues(relevant_issues)
+    all_issues = relevant_issues + issues_from_business_report(business_report)
+    annotated = annotate_issues(all_issues)
     recs = select_recommendations(annotated)
 
     # ── Build the one-line summary ──
