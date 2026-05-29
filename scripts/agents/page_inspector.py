@@ -18,6 +18,7 @@ from scripts.parsers import (
     parse_trust_signals, parse_cta,
     detect_cms, detect_framework, detect_analytics, detect_marketing_tools,
 )
+from scripts.pagespeed import get_pagespeed
 
 
 def run(url: str, depth: str = "surface") -> dict:
@@ -94,7 +95,7 @@ def run(url: str, depth: str = "surface") -> dict:
         "marketing_tools": detect_marketing_tools(html),
     }
 
-    pagespeed = {"lcp": None, "cls": None, "inp": None, "performance_category": None}
+    pagespeed = get_pagespeed(url)
     security = {"headers_score": 0, "headers_present": [], "ssl_expiry_days": None}
 
     site_structure = {
