@@ -142,24 +142,23 @@ def estimate_effort(issue: dict) -> str:
     text = issue.get("issue", "").lower()
     category = issue.get("category", "")
 
-    # Low-effort: things that are just adding or fixing a tag
+    # Low-effort: tag-level fixes and quick visual additions
     low_signals = ["meta description", "canonical", "viewport", "open graph",
                    "twitter card", "title tag", "missing <title>",
                    "missing h1", "no h1", "multiple h1",
-                   "sitemap", "robots.txt"]
+                   "sitemap", "robots.txt",
+                   "client logo", "conversion-stage"]
     if any(s in text for s in low_signals):
         return "low"
 
-    # High-effort: performance work, content production, structural change
-    if category == "Performance":
-        return "high"
-    if any(s in text for s in ["case stud", "blog", "ongoing content"]):
+    # High-effort: content production, performance work, structural changes
+    high_signals = ["case stud", "blog", "ongoing content", "awareness-stage"]
+    if category == "Performance" or any(s in text for s in high_signals):
         return "high"
 
-    # Schema and local SEO sit in the middle — research + write JSON-LD
-    if category in ("Schema", "Local SEO"):
-        return "medium"
-
+    # Everything else is medium: Schema/Local SEO (JSON-LD research + writing),
+    # Trust elements (testimonials, ratings), consideration/retention funnel
+    # gaps, and differentiator copy.
     return "medium"
 
 
