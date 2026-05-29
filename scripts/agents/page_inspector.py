@@ -30,9 +30,13 @@ def run(url: str, depth: str = "surface") -> dict:
 
     robots = fetch_robots_txt(domain)
 
-    sitemap = None
+    # PSI runs first — before any slow deep-scan network calls eat into its timeout budget.
+    pagespeed = get_pagespeed(url)
+
+    # Sitemap probe is a single fast HTTP call — run it on every scan depth.
+    sitemap = fetch_sitemap(domain, sitemap_urls=robots.get("sitemap_urls"))
+
     if depth == "deep":
-        sitemap = fetch_sitemap(domain, sitemap_urls=robots.get("sitemap_urls"))
         for path in ["/about", "/contact", "/services", "/reviews"]:
             fetch_subpage(domain, path)  # fetched but not stored on the report yet
 
@@ -95,7 +99,6 @@ def run(url: str, depth: str = "surface") -> dict:
         "marketing_tools": detect_marketing_tools(html),
     }
 
-    pagespeed = get_pagespeed(url)
     security = {"headers_score": 0, "headers_present": [], "ssl_expiry_days": None}
 
     site_structure = {

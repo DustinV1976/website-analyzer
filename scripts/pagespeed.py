@@ -47,6 +47,7 @@ EMPTY_RESULT = {
     "cls": None,
     "inp": None,
     "performance_category": None,
+    "opportunities": [],
     "source": None,   # "field" | "lab" | None
     "error": None,
 }
@@ -140,6 +141,33 @@ def _extract_lab_data(psi_json: dict):
         "cls": round(cls, 3) if cls is not None else None,
         "inp": round(inp_ms) if inp_ms is not None else None,
     }
+
+
+def _extract_opportunities(psi_json: dict) -> list:
+    """Pull the top actionable speed opportunities with estimated savings."""
+    audits = _safe_get(psi_json, "lighthouseResult", "audits") or {}
+
+    opportunity_keys = [
+        "render-blocking-resources",
+        "unused-javascript",
+        "unused-css-rules",
+        "uses-optimized-images",
+        "uses-text-compression",
+        "uses-long-cache-ttl",
+    ]
+
+    opportunities = []
+    for key in opportunity_keys:
+        audit = audits.get(key, {})
+        savings_ms = _safe_get(audit, "details", "overallSavingsMs")
+        if savings_ms and savings_ms > 100:  # only surface meaningful wins
+            opportunities.append({
+                "issue": audit.get("title"),
+                "savings_ms": round(savings_ms),
+                "description": audit.get("description"),
+            })
+
+    return sorted(opportunities, key=lambda x: x["savings_ms"], reverse=True)
 
 
 def _extract_performance_category(psi_json: dict):
@@ -239,6 +267,7 @@ def get_pagespeed(
         "cls": metrics["cls"],
         "inp": metrics["inp"],
         "performance_category": _extract_performance_category(data),
+        "opportunities": _extract_opportunities(data),
         "source": source,
         "error": None,
     }

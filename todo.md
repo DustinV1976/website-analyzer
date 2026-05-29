@@ -82,9 +82,12 @@ website-analyzer/
   - Checks for: `__NEXT_DATA__`, `<div id="root">`, `ng-version`, `data-reactroot`
   - Checks if visible text word count is under 100
 - [x] `fetch_with_playwright(url)` → Playwright fallback for SPA sites
-  - Waits for `networkidle` before returning HTML
+  - `wait_until="domcontentloaded"` + soft `networkidle` wait (swallowed if it times out)
 - [x] `smart_fetch(url)` → calls `fetch_page`, falls back to Playwright if SPA detected
 - [x] All errors handled gracefully: always returns a dict, never raises an uncaught exception
+  - `fetch_page` has a defensive return after the retry loop (guards against MAX_RETRIES=0)
+- [x] `fetch_robots_txt(domain)` — tries 4 candidates (https/http × www/non-www), collects all `Sitemap:` lines
+- [x] `fetch_sitemap(domain)` — gzip support, UTF-8 BOM stripping, sitemap index following (one level), URL dedup, 10k cap
 
 ### 1b. HTML Parsers (`scripts/parsers.py`) ✅
 
@@ -133,22 +136,26 @@ website-analyzer/
 - [x] `fetch_subpage(domain, path)` → fetches /about, /contact, /services, /reviews
 - [x] All return gracefully with `found: False` if file doesn't exist
 
-### 1d. Real Data Sources ⚠️ STUBBED — wire up in v1.1
+### 1d. Real Data Sources ✅ COMPLETE (partial)
 
-**Google PageSpeed Insights:**
-- [ ] `get_pagespeed(url, api_key)` → real LCP, CLS, INP scores + performance category
+#### Google PageSpeed Insights ✅ WIRED UP
+
+- [x] `scripts/pagespeed.py` — new module, "always return a dict, never raise" contract
+  - `get_pagespeed(url, api_key, strategy)` → real LCP, CLS, INP + performance_category
+  - Prefers CrUX field data (real users, 28-day window) over Lighthouse lab data
+  - Falls back to lab data for low-traffic sites not in CrUX dataset
+  - `EMPTY_RESULT` shape returned on any failure — auditor renders "Unknown" gracefully
+  - `PSI_TIMEOUT = 60` — PSI is slow; user sees wait message in app and CLI
   - Requires `PAGESPEED_API_KEY` in `.env`
-  - LCP: Good < 2.5s, Poor > 4.0s
-  - CLS: Good < 0.1, Poor > 0.25
-  - INP: Good < 200ms, Poor > 500ms
-- **Current state:** Returns `None` for all metrics. Auditor shows "Unknown" for CWV — harmless but incomplete.
 
-**Security headers:**
+#### Security headers
+
 - [ ] `check_security_headers(response_headers)` → HSTS, CSP, X-Frame-Options, Referrer-Policy, Permissions-Policy
 - [ ] Return score 0–5 (one point per header present)
 - **Current state:** Returns score 0, empty list. Add to `page_inspector.py` once built.
 
-**SSL certificate:**
+#### SSL certificate
+
 - [ ] `check_ssl(domain)` → expiry date, days remaining, issuer, TLS version
 - [ ] Flag if expiry is within 30 days
 - **Current state:** Returns `None`. Add to `page_inspector.py` once built.
@@ -158,10 +165,12 @@ website-analyzer/
 - [x] `run(url, depth)` orchestrates the full fetch sequence:
   1. `smart_fetch(url)` → main page
   2. `fetch_robots_txt(domain)`
-  3. If depth == `deep`: `fetch_sitemap(domain)` + `/about`, `/contact`, `/services`, `/reviews`
+  3. `fetch_sitemap(domain)` — runs on ALL depths (surface and deep); it's a single fast HTTP call
+  4. If depth == `deep`: `/about`, `/contact`, `/services`, `/reviews` subpages
 - [x] Calls all parsers on fetched HTML
 - [x] Returns `PAGE_INSPECTOR_REPORT` dict with all extracted signals
-- [ ] Wire up `get_pagespeed`, `check_security_headers`, `check_ssl` when built (1d above)
+- [x] `get_pagespeed` wired up — real CWV data from PSI API
+- [ ] Wire up `check_security_headers`, `check_ssl` when built (1d above)
 
 ### 1f. Agent 2 — SEO Auditor (`scripts/agents/seo_auditor.py`) ✅
 
@@ -228,9 +237,18 @@ website-analyzer/
   - All other models (Ecommerce, SaaS, Agency, Media, Unknown) → Local SEO issues suppressed
 - [x] Issues re-scored by business impact (not just technical severity)
   - Security issues boosted +3, Local SEO boosted +2, Performance boosted +1
+  - Conversion category boosted +3, Trust +2, Positioning +1
 - [x] Quick Wins (top 3): low effort, high impact — backfills from medium-effort if needed
-- [x] Strategic Recommendations (top 3): high effort, high impact
+- [x] Strategic Recommendations (top 3): high effort, high impact — backfills from medium-effort (impact ≥ 5) if fewer than 3 high-effort issues
 - [x] Schema fix text is business-aware (suggests Product schema for ecommerce, generic for others)
+- [x] `issues_from_business_report()` — converts Business Decoder findings into ranked issues:
+  - Missing testimonials / case studies / ratings / client logos → Trust/Conversion issues
+  - Missing differentiators → Positioning issue
+  - Thin funnel stages (awareness/consideration) → Content issues
+- [x] `estimate_effort()` — classifies effort by category and content signals:
+  - Performance issues and high-content signals (case studies, blog, awareness stage) → `"high"`
+  - Trust proof elements (testimonials, client logos) → `"medium"`
+  - Tag-level fixes (meta description, canonical, title, H1, viewport, sitemap) → `"low"`
 
 ### 1i. CLI Entry Point (`scripts/analyze.py`) ✅
 
@@ -396,7 +414,7 @@ website-analyzer/
 
 ## Phase 5 — Deploy and Demo Prep
 
-- [ ] Push all code to GitHub repo
+- [x] Push all code to GitHub repo (latest: commit `4977714`)
 - [ ] Create `.streamlit/secrets.toml` with API keys (gitignored — add via Streamlit Cloud UI)
 - [ ] Connect repo to Streamlit Community Cloud at share.streamlit.io
 - [ ] Deploy — confirm public HTTPS URL works
@@ -416,7 +434,7 @@ website-analyzer/
 
 Revisit after the first demo session. Priority order based on SEO pro feedback:
 
-- [ ] **Wire up PageSpeed API** — real LCP/CLS/INP data (stubbed in current build, needs `PAGESPEED_API_KEY`)
+- [x] **Wire up PageSpeed API** — `scripts/pagespeed.py` complete; real CWV data in all reports
 - [ ] **Wire up security headers + SSL checks** — currently stubbed in `page_inspector.py`
 - [ ] **Multi-page sampling** — randomly sample 5–10 pages from sitemap, not just homepage
 - [ ] **Industry benchmarks** — show score percentile vs. similar business types
